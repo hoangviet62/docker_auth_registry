@@ -1,0 +1,81 @@
+version: '2.1'
+
+services: 
+    registry:
+        image: registry:latest
+        ports:
+          - "5000:5000"
+        volumes:
+          - ./certs:/certs
+          - ./data:/var/lib/registry
+        restart: always
+        environment:
+          - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+          - REGISTRY_AUTH=token
+          - REGISTRY_AUTH_TOKEN_REALM=https://localhost:5001/auth
+          - REGISTRY_AUTH_TOKEN_SERVICE="Docker registry"
+          - REGISTRY_AUTH_TOKEN_ISSUER="Auth Service"
+          - REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=/certs/mkt.registry.com.pem
+    
+    dockerauth:
+        image: cesanta/docker_auth
+        ports:
+            - "5001:5001"
+        volumes:
+            - ./config:/config:ro
+            - ./logs:/logs
+            - ./certs:/certs
+            - ./auth:/auth
+        command: /auth/ldap_auth_config.yml
+        restart: always
+
+    openldap:
+        image: osixia/openldap:1.4.0
+        container_name: openldap
+        environment:
+            LDAP_LOG_LEVEL: "256"
+            LDAP_ORGANISATION: "Example Inc."
+            LDAP_DOMAIN: "example.org"
+            LDAP_BASE_DN: ""
+            LDAP_ADMIN_PASSWORD: "admin"
+            LDAP_CONFIG_PASSWORD: "config"
+            LDAP_READONLY_USER: "false"
+            #LDAP_READONLY_USER_USERNAME: "readonly"
+            #LDAP_READONLY_USER_PASSWORD: "readonly"
+            LDAP_RFC2307BIS_SCHEMA: "false"
+            LDAP_BACKEND: "mdb"
+            LDAP_TLS: "true"
+            LDAP_TLS_CRT_FILENAME: "ldap.crt"
+            LDAP_TLS_KEY_FILENAME: "ldap.key"
+            LDAP_TLS_DH_PARAM_FILENAME: "dhparam.pem"
+            LDAP_TLS_CA_CRT_FILENAME: "ca.crt"
+            LDAP_TLS_ENFORCE: "false"
+            LDAP_TLS_CIPHER_SUITE: "SECURE256:-VERS-SSL3.0"
+            LDAP_TLS_VERIFY_CLIENT: "demand"
+            LDAP_REPLICATION: "false"
+            KEEP_EXISTING_CONFIG: "false"
+            LDAP_REMOVE_CONFIG_AFTER_SETUP: "true"
+            LDAP_SSL_HELPER_PREFIX: "ldap"
+        tty: true
+        stdin_open: true
+        volumes:
+            - /var/lib/ldap
+            - /etc/ldap/slapd.d
+            - /container/service/slapd/assets/certs/
+            - ./ldap:/ldap
+        ports:
+            - "389:389"
+            - "636:636"
+        domainname: "example.org"
+        hostname: "ldap-server"
+
+    phpldapadmin:
+        image: osixia/phpldapadmin:latest
+        container_name: phpldapadmin
+        environment:
+            PHPLDAPADMIN_LDAP_HOSTS: "openldap"
+            PHPLDAPADMIN_HTTPS: "false"
+        ports:
+            - "8080:80"
+        depends_on:
+            - openldap
